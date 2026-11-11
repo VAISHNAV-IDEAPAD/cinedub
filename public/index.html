@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>AI Hollywood to Hindi Movie Dubber</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0d0f14">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <div class="logo-icon">🎬</div>
+        <div class="logo-text">
+          <h1>CineDub <span class="badge">AI</span></h1>
+          <p>Hollywood to Hindi AI Movie Dubbing Studio</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="qrBtn" class="icon-btn" title="Connect Phone">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span class="btn-text">Mobile View</span>
+        </button>
+        <button id="settingsBtn" class="icon-btn" title="Dubbing Settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <!-- Upload Card -->
+      <section class="card upload-card" id="uploadSection">
+        <div class="card-header">
+          <h2>Select English Movie / Video</h2>
+          <span class="sub-text">Supports MP4, MKV, MOV, WebM (Any size up to 5GB)</span>
+        </div>
+
+        <div class="tab-controls">
+          <button class="tab-btn active" id="tabUploadBtn">Upload Video</button>
+          <button class="tab-btn" id="tabLocalPathBtn">Local File Path (Desktop)</button>
+        </div>
+
+        <!-- Tab 1: Direct File Upload -->
+        <div class="tab-pane active" id="tabUploadPane">
+          <div class="dropzone" id="dropZone">
+            <input type="file" id="videoFileInput" accept="video/mp4,video/mkv,video/quicktime,video/webm,video/*">
+            <div class="dropzone-content">
+              <div class="upload-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </div>
+              <p class="primary-msg">Tap or drag movie file here</p>
+              <p class="secondary-msg">From phone camera roll, downloads, or local storage</p>
+              <span class="file-name-badge" id="selectedFileName">No file selected</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Local File Path -->
+        <div class="tab-pane" id="tabLocalPathPane">
+          <div class="input-group">
+            <label for="localFilePathInput">Enter absolute path of movie on your computer:</label>
+            <input type="text" id="localFilePathInput" placeholder="e.g. C:\Movies\Inception.2010.mp4">
+            <p class="hint">Instant processing with zero upload time!</p>
+          </div>
+        </div>
+
+        <!-- Optional Subtitle Accordion -->
+        <div class="accordion-item">
+          <button class="accordion-header" id="subAccordionToggle">
+            <span>Optional: English Subtitles (.srt)</span>
+            <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="accordion-content" id="subAccordionContent">
+            <p class="hint">If your video doesn't have embedded subtitles, upload an .srt file here for 100% exact timing.</p>
+            <input type="file" id="subtitleFileInput" accept=".srt,.vtt,.txt">
+          </div>
+        </div>
+
+        <!-- Dub Action Button -->
+        <button id="startDubBtn" class="primary-btn glow-btn" disabled>
+          <span class="btn-icon">⚡</span>
+          <span>Convert into Hindi Dubbed Movie</span>
+        </button>
+      </section>
+
+      <!-- Processing Status Card (Hidden by default) -->
+      <section class="card progress-card hidden" id="progressSection">
+        <div class="card-header">
+          <h2>AI Dubbing In Progress</h2>
+          <span class="status-badge" id="overallStatusBadge">Processing</span>
+        </div>
+
+        <div class="progress-bar-container">
+          <div class="progress-bar" id="progressBar" style="width: 0%;"></div>
+        </div>
+        <div class="progress-stats">
+          <span id="currentStageText">Initializing...</span>
+          <span id="progressPercent">0%</span>
+        </div>
+
+        <!-- Pipeline Steps List -->
+        <div class="pipeline-steps">
+          <div class="step" id="step-analysis">
+            <div class="step-dot"></div>
+            <div class="step-label">1. Demuxing & Audio Track Split</div>
+          </div>
+          <div class="step" id="step-transcription">
+            <div class="step-dot"></div>
+            <div class="step-label">2. Speech Diarization & Word Timestamps</div>
+          </div>
+          <div class="step" id="step-translation">
+            <div class="step-dot"></div>
+            <div class="step-label">3. Bollywood Cinematic Hindi Localization</div>
+          </div>
+          <div class="step" id="step-synthesis">
+            <div class="step-dot"></div>
+            <div class="step-label">4. Multi-Voice Neural Hindi Voice Cloning</div>
+          </div>
+          <div class="step" id="step-mixing">
+            <div class="step-dot"></div>
+            <div class="step-label">5. Time-Stretch Sync & BGM Ducking</div>
+          </div>
+          <div class="step" id="step-remuxing">
+            <div class="step-dot"></div>
+            <div class="step-label">6. Mobile-Optimized MP4 Remuxing (FastStart)</div>
+          </div>
+        </div>
+
+        <!-- Live Dubbing Transcript Preview -->
+        <div class="transcript-preview hidden" id="transcriptPreview">
+          <h3>Live Script Localization</h3>
+          <div class="script-scroll" id="scriptScroll"></div>
+        </div>
+      </section>
+
+      <!-- Results Card (Hidden by default) -->
+      <section class="card result-card hidden" id="resultSection">
+        <div class="card-header">
+          <h2>🎉 Hindi Dubbed Movie Ready!</h2>
+          <span class="badge success">iOS & Android Compatible</span>
+        </div>
+
+        <!-- Responsive HTML5 Video Player -->
+        <div class="player-wrapper">
+          <video id="dubbedVideoPlayer" controls playsinline webkit-playsinline preload="metadata">
+            Your browser does not support HTML5 video.
+          </video>
+        </div>
+
+        <div class="result-actions">
+          <a id="downloadBtn" class="primary-btn glow-btn download-btn" download>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Download Dubbed Movie (.MP4)</span>
+          </a>
+          <button id="dubAnotherBtn" class="secondary-btn">Dub Another Video</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Settings Modal Drawer -->
+    <div class="modal-backdrop hidden" id="settingsModal">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <h3>Dubbing Studio Settings</h3>
+          <button class="close-modal" id="closeSettingsBtn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="setting-item">
+            <label for="maleVoiceSelect">Male Character Voice (Neural)</label>
+            <select id="maleVoiceSelect">
+              <option value="hi-IN-MadhurNeural" selected>Madhur Neural (Hero / Cinematic)</option>
+              <option value="hi-IN-GulNeural">Gul Neural (Warm)</option>
+            </select>
+          </div>
+
+          <div class="setting-item">
+            <label for="femaleVoiceSelect">Female Character Voice (Neural)</label>
+            <select id="femaleVoiceSelect">
+              <option value="hi-IN-SwaraNeural" selected>Swara Neural (Natural / Expressive)</option>
+            </select>
+          </div>
+
+          <div class="setting-item">
+            <label for="bgmSlider">Background Music Volume (Ducking): <span id="bgmVolDisplay">35%</span></label>
+            <input type="range" id="bgmSlider" min="0.10" max="0.80" step="0.05" value="0.35">
+            <p class="hint">Adjusts how quiet background soundtrack gets when actors speak Hindi.</p>
+          </div>
+
+          <div class="setting-divider">AI Cloud Keys (Optional - Free fallbacks included)</div>
+
+          <div class="setting-item">
+            <label for="geminiKeyInput">Google Gemini API Key</label>
+            <input type="password" id="geminiKeyInput" placeholder="AIzaSy... (For elite Bollywood translation)">
+          </div>
+
+          <div class="setting-item">
+            <label for="groqKeyInput">Groq Whisper API Key</label>
+            <input type="password" id="groqKeyInput" placeholder="gsk_... (Fastest Whisper ASR)">
+          </div>
+
+          <div class="setting-item">
+            <label for="elevenLabsKeyInput">ElevenLabs API Key</label>
+            <input type="password" id="elevenLabsKeyInput" placeholder="sk_... (Voice Cloning)">
+          </div>
+
+          <button id="saveSettingsBtn" class="primary-btn">Save Settings</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile QR Modal -->
+    <div class="modal-backdrop hidden" id="qrModal">
+      <div class="modal-sheet text-center">
+        <div class="modal-header">
+          <h3>Open on Mobile Browser</h3>
+          <button class="close-modal" id="closeQrBtn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="hint">Open your iPhone Camera or Android Chrome on the same Wi-Fi network:</p>
+          <div class="qr-container" id="qrCodeContainer">
+            <div id="qrCodeImgWrapper"></div>
+            <p class="mobile-url-text" id="mobileUrlDisplay">http://...</p>
+          </div>
+          <button id="copyUrlBtn" class="secondary-btn">Copy Mobile URL</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Sticky Footer Bar -->
+    <footer class="app-footer">
+      <p>Universal Mobile Ready • iOS Safari • Android Chrome • FastStart MP4</p>
+    </footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "ai-movie-dubber",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "sample": "node generate-sample-clip.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@andresaya/edge-tts": "^1.9.1",
+    "axios": "^1.21.1",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
+    "form-data": "^4.0.6",
+    "multer": "^2.5.0",
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.22.2"
+  }
+}
