@@ -6,15 +6,29 @@ const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 async function translateFree(text) {
   if (!text) return '';
+
+  // Tier 1: Google Translate GTX endpoint
   try {
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=hi&dt=t&q=${encodeURIComponent(text)}`;
-    const res = await axios.get(url, { httpsAgent, timeout: 8000 });
+    const res = await axios.get(url, { httpsAgent, timeout: 6000 });
     if (res.data && res.data[0]) {
       return res.data[0].map(item => item[0]).join('').trim();
     }
   } catch (err) {
-    console.warn('Translate error:', err.message);
+    console.warn('Google translate error:', err.message);
   }
+
+  // Tier 2: MyMemory API (high availability fallback across Indian networks)
+  try {
+    const mmUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|hi`;
+    const res2 = await axios.get(mmUrl, { httpsAgent, timeout: 6000 });
+    if (res2.data?.responseData?.translatedText) {
+      return res2.data.responseData.translatedText.trim();
+    }
+  } catch (err2) {
+    console.warn('MyMemory translate error:', err2.message);
+  }
+
   return text;
 }
 

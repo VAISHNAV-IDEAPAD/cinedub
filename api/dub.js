@@ -6,38 +6,73 @@ const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 async function translateFree(text) {
   if (!text) return '';
+
+  // Tier 1: Google Translate GTX endpoint
   try {
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=hi&dt=t&q=${encodeURIComponent(text)}`;
-    const res = await axios.get(url, { httpsAgent, timeout: 8000 });
+    const res = await axios.get(url, { httpsAgent, timeout: 6000 });
     if (res.data && res.data[0]) {
       return res.data[0].map(item => item[0]).join('').trim();
     }
   } catch (err) {
-    console.warn('Translate error:', err.message);
+    console.warn('Google translate error:', err.message);
   }
+
+  // Tier 2: MyMemory API (high availability fallback across Indian networks)
+  try {
+    const mmUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|hi`;
+    const res2 = await axios.get(mmUrl, { httpsAgent, timeout: 6000 });
+    if (res2.data?.responseData?.translatedText) {
+      return res2.data.responseData.translatedText.trim();
+    }
+  } catch (err2) {
+    console.warn('MyMemory translate error:', err2.message);
+  }
+
   return text;
 }
 
 async function getGoogleHindiTTS(text) {
   if (!text) return null;
+  const cleanText = text.slice(0, 180);
+
+  // Tier 1: Google Translate tw-ob client
   try {
-    const cleanText = text.slice(0, 180);
     const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=hi&client=tw-ob&q=${encodeURIComponent(cleanText)}`;
     const response = await axios({
       method: 'GET',
       url,
       httpsAgent,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36'
       },
       responseType: 'arraybuffer',
-      timeout: 8000
+      timeout: 6000
     });
     return `data:audio/mpeg;base64,${Buffer.from(response.data).toString('base64')}`;
   } catch (err) {
-    console.warn('TTS fetch error:', err.message);
-    return null;
+    console.warn('TTS tw-ob error:', err.message);
   }
+
+  // Tier 2: Google Translate gtx client fallback
+  try {
+    const url2 = `https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=hi&client=gtx&q=${encodeURIComponent(cleanText)}`;
+    const response2 = await axios({
+      method: 'GET',
+      url: url2,
+      httpsAgent,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+      },
+      responseType: 'arraybuffer',
+      timeout: 6000
+    });
+    return `data:audio/mpeg;base64,${Buffer.from(response2.data).toString('base64')}`;
+  } catch (err2) {
+    console.warn('TTS gtx error:', err2.message);
+  }
+
+  return null;
 }
 
 function parseSrt(srtContent) {
@@ -122,7 +157,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    // 2. Translate and synthesize each segment
+    // 2. Translate and synthesize each segment with India network redundancy
     const processedSegments = [];
     for (const seg of segments) {
       const hindi = await translateFree(seg.text);

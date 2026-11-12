@@ -1051,4 +1051,11 @@ document.addEventListener('DOMContentLoaded', () => {
     div.textContent = text;
     return div.innerHTML;
   }
+
+  // Register Service Worker for Indian cellular network resilience (Jio, Airtel, Vi, BSNL)
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
 });
