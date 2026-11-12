@@ -203,6 +203,11 @@
           </div>
         </div>
 
+        <!-- Live Dub Track Status Indicator -->
+        <div id="dubTrackStatus" class="dub-track-status">
+          🎙️ Active Track: <strong>Hindi Neural Dub</strong> (English Dialogue Muted)
+        </div>
+
         <!-- Responsive HTML5 Video Player with Live Subtitle Overlay -->
         <div class="player-wrapper">
           <video id="dubbedVideoPlayer" controls playsinline webkit-playsinline preload="metadata">
@@ -213,12 +218,12 @@
         </div>
 
         <div class="result-actions">
-          <a id="downloadBtn" class="primary-btn glow-btn download-btn" download>
+          <button type="button" id="renderDubbedVideoBtn" class="primary-btn glow-btn">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <span>Download Dubbed Movie (.MP4)</span>
-          </a>
-          <a id="downloadAudioBtn" class="secondary-btn download-btn" style="text-align: center; text-decoration: none;" download="hindi_dubbed_audio.mp3">
-            🎵 Download Hindi Soundtrack (.MP3)
+            <span id="renderBtnText">🎬 Export & Download Dubbed Video</span>
+          </button>
+          <a id="downloadAudioBtn" class="secondary-btn download-btn" style="text-align: center; text-decoration: none;" download="hindi_dubbed_soundtrack.wav">
+            🎵 Download Full Hindi Audio Track (.WAV)
           </a>
           <button id="dubAnotherBtn" class="secondary-btn">Dub Another Video</button>
         </div>
