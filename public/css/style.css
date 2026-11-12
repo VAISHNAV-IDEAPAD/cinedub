@@ -557,7 +557,36 @@ body {
   font-weight: 600;
 }
 
-/* Video Player */
+/* Audio Track Selector */
+.audio-track-selector {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 4px;
+  border-radius: var(--radius-md);
+}
+
+.track-btn {
+  flex: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.track-btn.active {
+  background: rgba(37, 99, 235, 0.25);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #60a5fa;
+}
+
+/* Video Player & Subtitles */
 .player-wrapper {
   position: relative;
   width: 100%;
@@ -566,6 +595,22 @@ body {
   border-radius: var(--radius-md);
   overflow: hidden;
   margin-bottom: 20px;
+}
+
+.subtitle-overlay {
+  position: absolute;
+  bottom: 45px;
+  left: 5%;
+  right: 5%;
+  text-align: center;
+  font-family: var(--font-hindi);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fef08a;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.9), 0 0 10px rgba(0,0,0,0.8);
+  pointer-events: none;
+  z-index: 10;
+  transition: opacity 0.2s ease;
 }
 
 .player-wrapper video {

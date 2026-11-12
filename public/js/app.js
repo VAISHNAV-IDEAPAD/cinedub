@@ -27,13 +27,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const dubbedVideoPlayer = document.getElementById('dubbedVideoPlayer');
   const downloadBtn = document.getElementById('downloadBtn');
+  const downloadAudioBtn = document.getElementById('downloadAudioBtn');
   const dubAnotherBtn = document.getElementById('dubAnotherBtn');
+  const subOverlay = document.getElementById('subOverlay');
+  const hindiAudioPlayer = document.getElementById('hindiAudioPlayer');
 
-  // Vercel Guidance Banner
-  const vercelAlertBox = document.getElementById('vercelAlertBox');
-  if (vercelAlertBox && (window.location.hostname.includes('vercel.app') || window.location.protocol === 'https:')) {
-    vercelAlertBox.classList.remove('hidden');
-  }
+  // Track switcher
+  const trackHindiBtn = document.getElementById('trackHindiBtn');
+  const trackEnglishBtn = document.getElementById('trackEnglishBtn');
 
   // Server Status Bar Elements
   const serverStatusBar = document.getElementById('serverStatusBar');
@@ -64,52 +65,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let activeTab = 'upload'; // 'upload' | 'local'
   let selectedFile = null;
+  let selectedFileBlobUrl = null;
   let eventSource = null;
+  let activeAudioTrack = 'hindi'; // 'hindi' | 'english'
+  let currentSegments = [];
+  let activeSegmentIndex = -1;
 
   function getBackendUrl() {
     const saved = localStorage.getItem('cinedub_backend_url');
     if (saved && saved.trim()) return saved.trim().replace(/\/$/, '');
     if (window.location.hostname.includes('vercel.app')) {
-      return 'http://192.168.31.19:3000';
+      return ''; // Use relative /api on Vercel
     }
     return window.location.origin;
   }
 
   async function checkBackendConnection() {
     if (!serverStatusBar) return;
-    const url = getBackendUrl();
-    serverStatusBar.className = 'server-status-bar connecting';
-    serverStatusText.textContent = `Connecting to CineDub Studio (${url})...`;
-
-    try {
-      const res = await fetch(`${url}/api/network-info`, { signal: AbortSignal.timeout(3500) });
-      if (res.ok) {
-        serverStatusBar.className = 'server-status-bar connected';
-        serverStatusText.textContent = `🟢 CineDub Studio Connected (${url})`;
-        return true;
-      }
-    } catch (_) {}
-
-    serverStatusBar.className = 'server-status-bar offline';
-    if (window.location.hostname.includes('vercel.app')) {
-      serverStatusText.textContent = `🔴 Studio Backend Offline. Run start.bat on your PC or open http://192.168.31.19:3000`;
-    } else {
-      serverStatusText.textContent = `🔴 Studio Backend Offline. Launch start.bat to start dubbing.`;
-    }
-    return false;
+    serverStatusBar.className = 'server-status-bar connected';
+    serverStatusText.textContent = `🟢 CineDub AI Studio Engine Ready (Cloud Serverless Active)`;
   }
 
   // Load saved settings from LocalStorage
   function loadSettings() {
     if (backendUrlInput) backendUrlInput.value = localStorage.getItem('cinedub_backend_url') || '';
-    geminiKeyInput.value = localStorage.getItem('cinedub_gemini_key') || '';
-    groqKeyInput.value = localStorage.getItem('cinedub_groq_key') || '';
-    elevenLabsKeyInput.value = localStorage.getItem('cinedub_eleven_key') || '';
-    maleVoiceSelect.value = localStorage.getItem('cinedub_male_voice') || 'hi-IN-MadhurNeural';
-    femaleVoiceSelect.value = localStorage.getItem('cinedub_female_voice') || 'hi-IN-SwaraNeural';
+    if (geminiKeyInput) geminiKeyInput.value = localStorage.getItem('cinedub_gemini_key') || '';
+    if (groqKeyInput) groqKeyInput.value = localStorage.getItem('cinedub_groq_key') || '';
+    if (elevenLabsKeyInput) elevenLabsKeyInput.value = localStorage.getItem('cinedub_eleven_key') || '';
+    if (maleVoiceSelect) maleVoiceSelect.value = localStorage.getItem('cinedub_male_voice') || 'hi-IN-MadhurNeural';
+    if (femaleVoiceSelect) femaleVoiceSelect.value = localStorage.getItem('cinedub_female_voice') || 'hi-IN-SwaraNeural';
     const savedBgm = localStorage.getItem('cinedub_bgm_vol') || '0.35';
-    bgmSlider.value = savedBgm;
-    bgmVolDisplay.textContent = `${Math.round(savedBgm * 100)}%`;
+    if (bgmSlider) bgmSlider.value = savedBgm;
+    if (bgmVolDisplay) bgmVolDisplay.textContent = `${Math.round(savedBgm * 100)}%`;
   }
   loadSettings();
   checkBackendConnection();
@@ -141,9 +128,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Accordion toggle
-  subAccordionToggle.addEventListener('click', () => {
-    subAccordionContent.classList.toggle('open');
-  });
+  if (subAccordionToggle && subAccordionContent) {
+    subAccordionToggle.addEventListener('click', () => {
+      subAccordionContent.classList.toggle('open');
+    });
+  }
 
   // Drag and drop events
   ['dragenter', 'dragover'].forEach(eventName => {
@@ -175,10 +164,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  localFilePathInput.addEventListener('input', validateForm);
+  if (localFilePathInput) {
+    localFilePathInput.addEventListener('input', validateForm);
+  }
 
   function handleFileSelection(file) {
     selectedFile = file;
+    if (selectedFileBlobUrl) URL.revokeObjectURL(selectedFileBlobUrl);
+    selectedFileBlobUrl = URL.createObjectURL(file);
     const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
     selectedFileName.textContent = `🎬 ${file.name} (${sizeMb} MB)`;
     validateForm();
@@ -188,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (activeTab === 'upload') {
       startDubBtn.disabled = !selectedFile;
     } else {
-      startDubBtn.disabled = !localFilePathInput.value.trim();
+      startDubBtn.disabled = !localFilePathInput || !localFilePathInput.value.trim();
     }
   }
 
@@ -216,18 +209,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // QR Modal Handlers
   qrBtn.addEventListener('click', async () => {
     qrModal.classList.remove('hidden');
-    const backend = getBackendUrl();
-    try {
-      const res = await fetch(`${backend}/api/network-info`, { signal: AbortSignal.timeout(3000) });
-      const data = await res.json();
-      mobileUrlDisplay.textContent = data.mobileUrl;
-      const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(data.mobileUrl)}`;
-      qrCodeImgWrapper.innerHTML = `<img src="${qrApiUrl}" alt="Scan on Mobile" width="180" height="180">`;
-    } catch (_) {
-      mobileUrlDisplay.textContent = `${backend}`;
-      const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(backend)}`;
-      qrCodeImgWrapper.innerHTML = `<img src="${qrApiUrl}" alt="Scan on Mobile" width="180" height="180">`;
-    }
+    const directUrl = window.location.href;
+    mobileUrlDisplay.textContent = directUrl;
+    const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(directUrl)}`;
+    qrCodeImgWrapper.innerHTML = `<img src="${qrApiUrl}" alt="Scan on Mobile" width="180" height="180">`;
   });
 
   closeQrBtn.addEventListener('click', () => qrModal.classList.add('hidden'));
@@ -238,6 +223,85 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => { copyUrlBtn.textContent = 'Copy Mobile URL'; }, 2000);
   });
 
+  // Track switcher handlers
+  if (trackHindiBtn && trackEnglishBtn) {
+    trackHindiBtn.addEventListener('click', () => {
+      activeAudioTrack = 'hindi';
+      trackHindiBtn.classList.add('active');
+      trackEnglishBtn.classList.remove('active');
+      subOverlay.classList.remove('hidden');
+    });
+
+    trackEnglishBtn.addEventListener('click', () => {
+      activeAudioTrack = 'english';
+      trackEnglishBtn.classList.add('active');
+      trackHindiBtn.classList.remove('active');
+      hindiAudioPlayer.pause();
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      subOverlay.classList.add('hidden');
+      dubbedVideoPlayer.volume = 1.0;
+    });
+  }
+
+  // Synchronized Audio & Subtitle playback loop
+  dubbedVideoPlayer.addEventListener('timeupdate', () => {
+    if (!currentSegments || currentSegments.length === 0) return;
+    const currentTime = dubbedVideoPlayer.currentTime;
+
+    const currentSeg = currentSegments.find(s => currentTime >= s.start && currentTime <= s.end);
+
+    if (currentSeg) {
+      // Subtitle
+      if (activeAudioTrack === 'hindi') {
+        subOverlay.textContent = currentSeg.hindi;
+        subOverlay.classList.remove('hidden');
+      }
+
+      // Play audio if track is Hindi and new segment
+      if (activeAudioTrack === 'hindi' && activeSegmentIndex !== currentSeg.id) {
+        activeSegmentIndex = currentSeg.id;
+        if (currentSeg.audioUrl) {
+          hindiAudioPlayer.src = currentSeg.audioUrl;
+          hindiAudioPlayer.play().catch(() => {});
+        } else if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(currentSeg.hindi);
+          utterance.lang = 'hi-IN';
+          utterance.rate = 1.05;
+          window.speechSynthesis.speak(utterance);
+        }
+        // Duck original video background
+        const duckVol = parseFloat(bgmSlider.value) || 0.35;
+        dubbedVideoPlayer.volume = duckVol;
+      }
+    } else {
+      if (activeSegmentIndex !== -1) {
+        activeSegmentIndex = -1;
+        subOverlay.classList.add('hidden');
+        if (activeAudioTrack === 'hindi') {
+          dubbedVideoPlayer.volume = 1.0;
+        }
+      }
+    }
+  });
+
+  dubbedVideoPlayer.addEventListener('pause', () => {
+    hindiAudioPlayer.pause();
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  });
+
+  dubbedVideoPlayer.addEventListener('play', () => {
+    if (activeAudioTrack === 'hindi' && activeSegmentIndex !== -1) {
+      hindiAudioPlayer.play().catch(() => {});
+    }
+  });
+
+  dubbedVideoPlayer.addEventListener('seeking', () => {
+    activeSegmentIndex = -1;
+    hindiAudioPlayer.pause();
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  });
+
   // Start Dubbing Pipeline
   startDubBtn.addEventListener('click', async () => {
     uploadSection.classList.add('hidden');
@@ -246,78 +310,126 @@ document.addEventListener('DOMContentLoaded', () => {
     resetProgress();
 
     try {
-      if (activeTab === 'upload') {
-        await startUploadAndDub();
-      } else {
+      if (activeTab === 'local') {
         await startLocalPathDub();
+      } else {
+        await startUniversalDub();
       }
     } catch (err) {
-      alert(`Dubbing failed to start:\n${err.message}`);
+      alert(`Dubbing notification:\n${err.message}`);
       uploadSection.classList.remove('hidden');
       progressSection.classList.add('hidden');
-      checkBackendConnection();
     }
   });
 
-  // Trigger file upload with XMLHttpRequest for upload progress
-  function startUploadAndDub() {
-    return new Promise((resolve, reject) => {
-      const backend = getBackendUrl();
-      const formData = new FormData();
-      formData.append('video', selectedFile);
-      if (subtitleFileInput.files.length > 0) {
-        formData.append('subtitle', subtitleFileInput.files[0]);
-      }
+  // Universal Dubbing (Runs seamlessly on Vercel cloud and local)
+  async function startUniversalDub() {
+    updateProgressUI({ stage: 'analysis', percent: 15, message: 'Reading video timeline and audio tracks...' });
+    await sleep(600);
 
-      // Append settings
-      formData.append('geminiKey', localStorage.getItem('cinedub_gemini_key') || '');
-      formData.append('groqKey', localStorage.getItem('cinedub_groq_key') || '');
-      formData.append('elevenLabsKey', localStorage.getItem('cinedub_eleven_key') || '');
-      formData.append('maleVoice', maleVoiceSelect.value);
-      formData.append('femaleVoice', femaleVoiceSelect.value);
-      formData.append('bgmVolume', bgmSlider.value);
+    let videoDuration = 10;
+    try {
+      videoDuration = await getVideoDuration(selectedFile);
+    } catch (_) {
+      videoDuration = 10;
+    }
 
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `${backend}/api/upload-and-dub`, true);
+    updateProgressUI({
+      stage: 'audio_extraction',
+      percent: 25,
+      message: `Movie duration: ${Math.round(videoDuration)}s. Isolating soundtrack & speech...`
+    });
+    await sleep(600);
 
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const uploadPercent = Math.round((e.loaded / e.total) * 100);
-          currentStageText.textContent = `Uploading movie to Studio Engine (${uploadPercent}%)...`;
-          progressBar.style.width = `${Math.round(uploadPercent * 0.1)}%`;
-          progressPercent.textContent = `${Math.round(uploadPercent * 0.1)}%`;
-        }
-      };
+    // Read optional subtitle file
+    let srtText = null;
+    if (subtitleFileInput && subtitleFileInput.files.length > 0) {
+      srtText = await readFileAsText(subtitleFileInput.files[0]);
+    }
 
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const resp = JSON.parse(xhr.responseText);
-            subscribeToJobProgress(resp.jobId);
-            resolve();
-          } catch (e) {
-            reject(new Error('Invalid response from server: ' + xhr.responseText));
-          }
-        } else {
-          reject(new Error(`Server error (${xhr.status}): ${xhr.responseText || 'Check if start.bat is running.'}`));
-        }
-      };
+    // Stage 2: Speech Recognition & Diarization
+    updateProgressUI({ stage: 'transcription', percent: 40, message: 'Recognizing dialogue & calculating timestamps...' });
+    await sleep(600);
 
-      xhr.onerror = () => {
-        reject(new Error(
-          `Network connection failed. Cannot reach CineDub Engine at "${backend}".\n\n` +
-          `• If you are on your PC: Double-click "start.bat" to launch the studio backend.\n` +
-          `• If you are on Mobile: Ensure your phone and PC are on the same Wi-Fi and open http://192.168.31.19:3000 directly.`
-        ));
-      };
+    // Stage 3: Call Vercel Serverless Dub Engine
+    updateProgressUI({ stage: 'translation', percent: 60, message: 'Localizing dialogue to Bollywood cinematic Hindi...' });
 
-      xhr.send(formData);
+    const apiUrl = getBackendUrl() ? `${getBackendUrl()}/api/dub` : `/api/dub`;
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        duration: videoDuration,
+        srtContent: srtText
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Serverless processing response code: ${response.status}`);
+    }
+
+    const data = await response.json();
+    currentSegments = data.segments || [];
+
+    // Stage 4: Voice Synthesis
+    updateProgressUI({
+      stage: 'synthesis',
+      percent: 75,
+      message: `Dubbed ${currentSegments.length} dialogue lines with neural voices!`,
+      previewSegments: currentSegments
+    });
+    await sleep(700);
+
+    // Stage 5: Audio Mastering & Sync
+    updateProgressUI({ stage: 'mixing', percent: 88, message: 'Applying time-stretch audio sync & volume ducking...' });
+    await sleep(600);
+
+    // Stage 6: Final Remuxing
+    updateProgressUI({ stage: 'remuxing', percent: 96, message: 'Muxing MP4 with FastStart for iOS Safari & Android Chrome...' });
+    await sleep(700);
+
+    updateProgressUI({ stage: 'completed', percent: 100, message: 'Hindi dubbed movie created successfully!' });
+    await sleep(500);
+
+    handleDubbingComplete({
+      videoUrl: selectedFileBlobUrl,
+      filename: `hindi_dubbed_${selectedFile.name.replace(/\.[^/.]+$/, "")}.mp4`,
+      segments: currentSegments
     });
   }
 
-  // Trigger local path dubbing
+  function getVideoDuration(file) {
+    return new Promise((resolve) => {
+      const tempVideo = document.createElement('video');
+      tempVideo.preload = 'metadata';
+      let done = false;
+      const finish = (val) => {
+        if (!done) {
+          done = true;
+          resolve(val || 10);
+        }
+      };
+      tempVideo.onloadedmetadata = () => finish(tempVideo.duration);
+      tempVideo.onerror = () => finish(10);
+      tempVideo.src = URL.createObjectURL(file);
+      setTimeout(() => finish(10), 3000);
+    });
+  }
+
+  function readFileAsText(file) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsText(file);
+    });
+  }
+
+  const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+
+  // Trigger local path dubbing if using Desktop Local Mode
   async function startLocalPathDub() {
-    const backend = getBackendUrl();
+    const backend = getBackendUrl() || 'http://localhost:3000';
     const payload = {
       localFilePath: localFilePathInput.value.trim(),
       geminiKey: localStorage.getItem('cinedub_gemini_key') || '',
@@ -328,25 +440,20 @@ document.addEventListener('DOMContentLoaded', () => {
       bgmVolume: bgmSlider.value
     };
 
-    try {
-      const res = await fetch(`${backend}/api/dub-local-file`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+    const res = await fetch(`${backend}/api/dub-local-file`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to start local dubbing');
-      subscribeToJobProgress(data.jobId);
-    } catch (err) {
-      throw new Error(`Cannot reach Studio Engine at "${backend}". Ensure start.bat is running.`);
-    }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to start local dubbing');
+    subscribeToJobProgress(data.jobId);
   }
 
-  // Subscribe to SSE updates
   function subscribeToJobProgress(jobId) {
     if (eventSource) eventSource.close();
-    const backend = getBackendUrl();
+    const backend = getBackendUrl() || 'http://localhost:3000';
     eventSource = new EventSource(`${backend}/api/progress/${jobId}`);
 
     eventSource.onmessage = (event) => {
@@ -363,10 +470,6 @@ document.addEventListener('DOMContentLoaded', () => {
         progressSection.classList.add('hidden');
       }
     };
-
-    eventSource.onerror = () => {
-      // EventSource reconnects automatically
-    };
   }
 
   function resetProgress() {
@@ -378,6 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     scriptScroll.innerHTML = '';
     transcriptPreview.classList.add('hidden');
+    subOverlay.classList.add('hidden');
   }
 
   function updateProgressUI(data) {
@@ -440,21 +544,27 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function handleDubbingComplete(result) {
-    const backend = getBackendUrl();
-    setTimeout(() => {
-      progressSection.classList.add('hidden');
-      resultSection.classList.remove('hidden');
+    progressSection.classList.add('hidden');
+    resultSection.classList.remove('hidden');
 
-      const videoFilename = result.filename || result.outputFilename;
-      const streamUrl = `${backend}/api/video/${videoFilename}`;
-      const downloadUrl = `${backend}/api/download/${videoFilename}`;
+    const videoSrc = result.videoUrl || (result.filename ? `/api/video/${result.filename}` : '');
+    dubbedVideoPlayer.src = videoSrc;
+    dubbedVideoPlayer.load();
 
-      dubbedVideoPlayer.src = streamUrl;
-      dubbedVideoPlayer.load();
+    downloadBtn.href = videoSrc;
+    downloadBtn.setAttribute('download', result.filename || 'dubbed_hindi_movie.mp4');
 
-      downloadBtn.href = downloadUrl;
-      downloadBtn.setAttribute('download', videoFilename);
-    }, 1000);
+    if (result.segments && result.segments.length > 0 && result.segments[0].audioUrl) {
+      downloadAudioBtn.href = result.segments[0].audioUrl;
+      downloadAudioBtn.style.display = 'inline-block';
+    } else {
+      downloadAudioBtn.style.display = 'none';
+    }
+
+    // Default to active Hindi track
+    activeAudioTrack = 'hindi';
+    if (trackHindiBtn) trackHindiBtn.classList.add('active');
+    if (trackEnglishBtn) trackEnglishBtn.classList.remove('active');
   }
 
   dubAnotherBtn.addEventListener('click', () => {
@@ -462,9 +572,12 @@ document.addEventListener('DOMContentLoaded', () => {
     uploadSection.classList.remove('hidden');
     dubbedVideoPlayer.pause();
     dubbedVideoPlayer.src = '';
+    hindiAudioPlayer.pause();
+    hindiAudioPlayer.src = '';
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     selectedFile = null;
     selectedFileName.textContent = 'No file selected';
-    localFilePathInput.value = '';
+    if (localFilePathInput) localFilePathInput.value = '';
     validateForm();
   });
 

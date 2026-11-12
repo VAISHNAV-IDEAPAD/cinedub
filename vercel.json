@@ -3,6 +3,7 @@
   "name": "cinedub",
   "cleanUrls": true,
   "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/css/(.*)", "destination": "/css/$1" },
     { "source": "/js/(.*)", "destination": "/js/$1" },
     { "source": "/(.*)", "destination": "/index.html" }

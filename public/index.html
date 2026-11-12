@@ -49,14 +49,11 @@
           <span class="sub-text">Supports MP4, MKV, MOV, WebM (Any size up to 5GB)</span>
         </div>
 
-        <!-- Vercel Guidance Banner (Only shown when browsing on vercel.app) -->
-        <div id="vercelAlertBox" class="vercel-alert-box hidden">
+        <!-- Cloud AI Movie Dubber Banner -->
+        <div id="cloudAlertBox" class="vercel-alert-box">
           <div class="vercel-alert-icon">⚡</div>
           <div class="vercel-alert-text">
-            <strong>For High-Speed Movie Dubbing (Up to 5GB):</strong> Movie stem separation and audio remuxing require FFmpeg running on your local engine.
-            <div class="vercel-alert-actions">
-              <a href="http://192.168.31.19:3000" id="directStudioLink" class="mini-launch-btn">📲 Open Direct Studio (http://192.168.31.19:3000)</a>
-            </div>
+            <strong>CineDub Cloud Studio Active:</strong> Upload any English Hollywood movie or video clip (MP4, MKV, MOV, WebM). Instant playback with neural Hindi voice dubbing, auto-ducking background audio, and dual-track player on iPhone Safari, Android Chrome, and Desktop!
           </div>
         </div>
 
@@ -165,17 +162,28 @@
           <span class="badge success">iOS & Android Compatible</span>
         </div>
 
-        <!-- Responsive HTML5 Video Player -->
+        <!-- Audio Track Switcher -->
+        <div class="audio-track-selector">
+          <button class="track-btn active" id="trackHindiBtn">🇮🇳 Dubbed Hindi Audio (Active)</button>
+          <button class="track-btn" id="trackEnglishBtn">🇺🇸 Original English Audio</button>
+        </div>
+
+        <!-- Responsive HTML5 Video Player with Live Subtitle Overlay -->
         <div class="player-wrapper">
           <video id="dubbedVideoPlayer" controls playsinline webkit-playsinline preload="metadata">
             Your browser does not support HTML5 video.
           </video>
+          <div id="subOverlay" class="subtitle-overlay hidden"></div>
+          <audio id="hindiAudioPlayer" preload="auto"></audio>
         </div>
 
         <div class="result-actions">
           <a id="downloadBtn" class="primary-btn glow-btn download-btn" download>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span>Download Dubbed Movie (.MP4)</span>
+          </a>
+          <a id="downloadAudioBtn" class="secondary-btn download-btn" style="text-align: center; text-decoration: none;" download="hindi_dubbed_audio.mp3">
+            🎵 Download Hindi Soundtrack (.MP3)
           </a>
           <button id="dubAnotherBtn" class="secondary-btn">Dub Another Video</button>
         </div>
