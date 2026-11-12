@@ -34,6 +34,13 @@
       </div>
     </header>
 
+    <!-- Studio Engine Connection Banner -->
+    <div id="serverStatusBar" class="server-status-bar connecting">
+      <span class="status-dot"></span>
+      <span id="serverStatusText">Connecting to CineDub Studio Engine...</span>
+      <a href="javascript:void(0)" id="reconnectBtn" class="reconnect-link">Check Status</a>
+    </div>
+
     <main class="main-content">
       <!-- Upload Card -->
       <section class="card upload-card" id="uploadSection">
@@ -172,6 +179,12 @@
           <button class="close-modal" id="closeSettingsBtn">&times;</button>
         </div>
         <div class="modal-body">
+          <div class="setting-item">
+            <label for="backendUrlInput">CineDub Studio Engine URL</label>
+            <input type="text" id="backendUrlInput" placeholder="http://192.168.31.19:3000">
+            <p class="hint">The address of your local PC running start.bat (needed when using Vercel or mobile).</p>
+          </div>
+
           <div class="setting-item">
             <label for="maleVoiceSelect">Male Character Voice (Neural)</label>
             <select id="maleVoiceSelect">

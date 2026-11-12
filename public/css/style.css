@@ -51,7 +51,56 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 0 20px 0;
+  padding: 12px 0 12px 0;
+}
+
+/* Server Status Bar */
+.server-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-bottom: 16px;
+  border: 1px solid var(--card-border);
+  transition: all 0.3s ease;
+}
+
+.server-status-bar.connected {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #34d399;
+}
+
+.server-status-bar.connecting {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+}
+
+.server-status-bar.offline {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.reconnect-link {
+  margin-left: auto;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.75rem;
 }
 
 .logo-area {

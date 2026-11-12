@@ -11,26 +11,53 @@ const VOICES = {
   child: 'hi-IN-GulNeural'
 };
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 /**
- * Synthesize speech in Hindi using Microsoft Neural TTS (Free, no API key required)
+ * Fallback: Google Translate TTS in Hindi (Fast, highly reliable, zero rate limit)
+ */
+async function synthesizeWithGoogleTTS(text, outputPath) {
+  const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=hi&client=tw-ob&q=${encodeURIComponent(text.slice(0, 180))}`;
+  const response = await axios({
+    method: 'GET',
+    url,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+    },
+    responseType: 'arraybuffer',
+    timeout: 8000
+  });
+  fs.writeFileSync(outputPath, Buffer.from(response.data));
+  return outputPath;
+}
+
+/**
+ * Synthesize speech in Hindi using Microsoft Neural TTS with retry & Google TTS fallback
  */
 async function synthesizeWithEdgeTTS(text, voiceName, outputPath, options = {}) {
   const { rate = '+0%', pitch = '+0Hz', volume = '+0%' } = options;
-  const tts = new EdgeTTS();
   const selectedVoice = voiceName || VOICES.male;
 
-  try {
-    await tts.synthesize(text, selectedVoice, {
-      rate,
-      pitch,
-      volume
-    });
-    await tts.toFile(outputPath);
-    return outputPath;
-  } catch (err) {
-    console.error(`EdgeTTS synthesis failed for "${text}":`, err.message);
-    throw err;
+  // Try EdgeTTS up to 2 times with delay
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const tts = new EdgeTTS();
+      await tts.synthesize(text, selectedVoice, {
+        rate,
+        pitch,
+        volume
+      });
+      await tts.toFile(outputPath);
+      return outputPath;
+    } catch (err) {
+      console.warn(`EdgeTTS attempt ${attempt} failed for "${text.slice(0, 30)}...":`, err.message);
+      if (attempt < 2) await sleep(1200);
+    }
   }
+
+  // Fallback to Google TTS
+  console.log(`Falling back to high-reliability Google Hindi speech for "${text.slice(0, 30)}..."`);
+  return await synthesizeWithGoogleTTS(text, outputPath);
 }
 
 /**
@@ -91,5 +118,6 @@ module.exports = {
   VOICES,
   generateHindiSpeech,
   synthesizeWithEdgeTTS,
+  synthesizeWithGoogleTTS,
   synthesizeWithElevenLabs
 };

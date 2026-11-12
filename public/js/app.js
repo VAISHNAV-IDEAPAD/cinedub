@@ -29,6 +29,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const downloadBtn = document.getElementById('downloadBtn');
   const dubAnotherBtn = document.getElementById('dubAnotherBtn');
 
+  // Server Status Bar Elements
+  const serverStatusBar = document.getElementById('serverStatusBar');
+  const serverStatusText = document.getElementById('serverStatusText');
+  const reconnectBtn = document.getElementById('reconnectBtn');
+  const backendUrlInput = document.getElementById('backendUrlInput');
+
   // Settings Elements
   const settingsBtn = document.getElementById('settingsBtn');
   const settingsModal = document.getElementById('settingsModal');
@@ -54,8 +60,42 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedFile = null;
   let eventSource = null;
 
+  function getBackendUrl() {
+    const saved = localStorage.getItem('cinedub_backend_url');
+    if (saved && saved.trim()) return saved.trim().replace(/\/$/, '');
+    if (window.location.hostname.includes('vercel.app')) {
+      return 'http://192.168.31.19:3000';
+    }
+    return window.location.origin;
+  }
+
+  async function checkBackendConnection() {
+    if (!serverStatusBar) return;
+    const url = getBackendUrl();
+    serverStatusBar.className = 'server-status-bar connecting';
+    serverStatusText.textContent = `Connecting to CineDub Studio (${url})...`;
+
+    try {
+      const res = await fetch(`${url}/api/network-info`, { signal: AbortSignal.timeout(3500) });
+      if (res.ok) {
+        serverStatusBar.className = 'server-status-bar connected';
+        serverStatusText.textContent = `🟢 CineDub Studio Connected (${url})`;
+        return true;
+      }
+    } catch (_) {}
+
+    serverStatusBar.className = 'server-status-bar offline';
+    if (window.location.hostname.includes('vercel.app')) {
+      serverStatusText.textContent = `🔴 Studio Backend Offline. Run start.bat on your PC or open http://192.168.31.19:3000`;
+    } else {
+      serverStatusText.textContent = `🔴 Studio Backend Offline. Launch start.bat to start dubbing.`;
+    }
+    return false;
+  }
+
   // Load saved settings from LocalStorage
   function loadSettings() {
+    if (backendUrlInput) backendUrlInput.value = localStorage.getItem('cinedub_backend_url') || '';
     geminiKeyInput.value = localStorage.getItem('cinedub_gemini_key') || '';
     groqKeyInput.value = localStorage.getItem('cinedub_groq_key') || '';
     elevenLabsKeyInput.value = localStorage.getItem('cinedub_eleven_key') || '';
@@ -66,6 +106,14 @@ document.addEventListener('DOMContentLoaded', () => {
     bgmVolDisplay.textContent = `${Math.round(savedBgm * 100)}%`;
   }
   loadSettings();
+  checkBackendConnection();
+
+  if (reconnectBtn) {
+    reconnectBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      checkBackendConnection();
+    });
+  }
 
   // Tab switching
   tabUploadBtn.addEventListener('click', () => {
@@ -146,6 +194,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   saveSettingsBtn.addEventListener('click', () => {
+    if (backendUrlInput) {
+      localStorage.setItem('cinedub_backend_url', backendUrlInput.value.trim());
+    }
     localStorage.setItem('cinedub_gemini_key', geminiKeyInput.value.trim());
     localStorage.setItem('cinedub_groq_key', groqKeyInput.value.trim());
     localStorage.setItem('cinedub_eleven_key', elevenLabsKeyInput.value.trim());
@@ -153,19 +204,23 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('cinedub_female_voice', femaleVoiceSelect.value);
     localStorage.setItem('cinedub_bgm_vol', bgmSlider.value);
     settingsModal.classList.add('hidden');
+    checkBackendConnection();
   });
 
   // QR Modal Handlers
   qrBtn.addEventListener('click', async () => {
     qrModal.classList.remove('hidden');
+    const backend = getBackendUrl();
     try {
-      const res = await fetch('/api/network-info');
+      const res = await fetch(`${backend}/api/network-info`, { signal: AbortSignal.timeout(3000) });
       const data = await res.json();
       mobileUrlDisplay.textContent = data.mobileUrl;
       const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(data.mobileUrl)}`;
       qrCodeImgWrapper.innerHTML = `<img src="${qrApiUrl}" alt="Scan on Mobile" width="180" height="180">`;
     } catch (_) {
-      mobileUrlDisplay.textContent = window.location.href;
+      mobileUrlDisplay.textContent = `${backend}`;
+      const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(backend)}`;
+      qrCodeImgWrapper.innerHTML = `<img src="${qrApiUrl}" alt="Scan on Mobile" width="180" height="180">`;
     }
   });
 
@@ -191,15 +246,17 @@ document.addEventListener('DOMContentLoaded', () => {
         await startLocalPathDub();
       }
     } catch (err) {
-      alert(`Dubbing failed to start: ${err.message}`);
+      alert(`Dubbing failed to start:\n${err.message}`);
       uploadSection.classList.remove('hidden');
       progressSection.classList.add('hidden');
+      checkBackendConnection();
     }
   });
 
   // Trigger file upload with XMLHttpRequest for upload progress
   function startUploadAndDub() {
     return new Promise((resolve, reject) => {
+      const backend = getBackendUrl();
       const formData = new FormData();
       formData.append('video', selectedFile);
       if (subtitleFileInput.files.length > 0) {
@@ -215,34 +272,46 @@ document.addEventListener('DOMContentLoaded', () => {
       formData.append('bgmVolume', bgmSlider.value);
 
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/upload-and-dub', true);
+      xhr.open('POST', `${backend}/api/upload-and-dub`, true);
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
           const uploadPercent = Math.round((e.loaded / e.total) * 100);
-          currentStageText.textContent = `Uploading movie (${uploadPercent}%)...`;
-          progressBar.style.width = `${Math.round(uploadPercent * 0.1)}%`; // First 10% for upload
+          currentStageText.textContent = `Uploading movie to Studio Engine (${uploadPercent}%)...`;
+          progressBar.style.width = `${Math.round(uploadPercent * 0.1)}%`;
           progressPercent.textContent = `${Math.round(uploadPercent * 0.1)}%`;
         }
       };
 
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          const resp = JSON.parse(xhr.responseText);
-          subscribeToJobProgress(resp.jobId);
-          resolve();
+          try {
+            const resp = JSON.parse(xhr.responseText);
+            subscribeToJobProgress(resp.jobId);
+            resolve();
+          } catch (e) {
+            reject(new Error('Invalid response from server: ' + xhr.responseText));
+          }
         } else {
-          reject(new Error(xhr.responseText || 'Upload failed'));
+          reject(new Error(`Server error (${xhr.status}): ${xhr.responseText || 'Check if start.bat is running.'}`));
         }
       };
 
-      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.onerror = () => {
+        reject(new Error(
+          `Network connection failed. Cannot reach CineDub Engine at "${backend}".\n\n` +
+          `• If you are on your PC: Double-click "start.bat" to launch the studio backend.\n` +
+          `• If you are on Mobile: Ensure your phone and PC are on the same Wi-Fi and open http://192.168.31.19:3000 directly.`
+        ));
+      };
+
       xhr.send(formData);
     });
   }
 
   // Trigger local path dubbing
   async function startLocalPathDub() {
+    const backend = getBackendUrl();
     const payload = {
       localFilePath: localFilePathInput.value.trim(),
       geminiKey: localStorage.getItem('cinedub_gemini_key') || '',
@@ -253,21 +322,26 @@ document.addEventListener('DOMContentLoaded', () => {
       bgmVolume: bgmSlider.value
     };
 
-    const res = await fetch('/api/dub-local-file', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    try {
+      const res = await fetch(`${backend}/api/dub-local-file`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to start local dubbing');
-    subscribeToJobProgress(data.jobId);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to start local dubbing');
+      subscribeToJobProgress(data.jobId);
+    } catch (err) {
+      throw new Error(`Cannot reach Studio Engine at "${backend}". Ensure start.bat is running.`);
+    }
   }
 
   // Subscribe to SSE updates
   function subscribeToJobProgress(jobId) {
     if (eventSource) eventSource.close();
-    eventSource = new EventSource(`/api/progress/${jobId}`);
+    const backend = getBackendUrl();
+    eventSource = new EventSource(`${backend}/api/progress/${jobId}`);
 
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -308,7 +382,6 @@ document.addEventListener('DOMContentLoaded', () => {
       currentStageText.textContent = data.message;
     }
 
-    // Step state updating
     const stageMap = {
       'analysis': 'step-analysis',
       'audio_extraction': 'step-analysis',
@@ -336,7 +409,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Live preview of translated script
     if (data.previewSegments && data.previewSegments.length > 0) {
       transcriptPreview.classList.remove('hidden');
       scriptScroll.innerHTML = '';
@@ -362,13 +434,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function handleDubbingComplete(result) {
+    const backend = getBackendUrl();
     setTimeout(() => {
       progressSection.classList.add('hidden');
       resultSection.classList.remove('hidden');
 
       const videoFilename = result.filename || result.outputFilename;
-      const streamUrl = `/api/video/${videoFilename}`;
-      const downloadUrl = `/api/download/${videoFilename}`;
+      const streamUrl = `${backend}/api/video/${videoFilename}`;
+      const downloadUrl = `${backend}/api/download/${videoFilename}`;
 
       dubbedVideoPlayer.src = streamUrl;
       dubbedVideoPlayer.load();

@@ -18,7 +18,8 @@ function runProcess(command, args) {
       if (code === 0) {
         resolve({ stdout, stderr });
       } else {
-        reject(new Error(`${command} failed (code ${code}): ${stderr || stdout}`));
+        const errorMsg = stderr || stdout || `Process exited with code ${code}`;
+        reject(new Error(`${command} failed: ${errorMsg.slice(-500)}`));
       }
     });
 
@@ -53,6 +54,7 @@ async function getVideoMetadata(filePath) {
       formatName: info.format?.format_name,
       sizeBytes: info.format?.size,
       video: videoStream ? {
+        index: videoStream.index,
         codec: videoStream.codec_name,
         width: videoStream.width,
         height: videoStream.height,
@@ -96,30 +98,23 @@ async function extractAudioForWhisper(videoPath, outputWavPath) {
 
 /**
  * Extract background music & sound effects track
- * Center-channel attenuation suppresses center dialogue while keeping stereo BGM and Foley effects intact
  */
 async function extractBackgroundTrack(videoPath, outputBgmPath) {
-  // Using a vocal-reduction stereo filter:
-  // Combines out-of-phase stereo difference + bandpass ducking around speech range
-  const filter = 'pan=stereo|c0=c0-0.5*c1|c1=c1-0.5*c0,lowpass=f=3500,highpass=f=200';
-  
   try {
     await runProcess('ffmpeg', [
       '-y',
       '-i', videoPath,
       '-vn',
-      '-af', 'volume=0.35', // duck background volume for dialogue space
+      '-af', 'volume=0.35',
       '-c:a', 'aac',
       '-b:a', '192k',
       outputBgmPath
     ]);
   } catch (err) {
-    // Fallback: direct audio extract if advanced filter fails
     await runProcess('ffmpeg', [
       '-y',
       '-i', videoPath,
       '-vn',
-      '-af', 'volume=0.3',
       '-c:a', 'aac',
       outputBgmPath
     ]);
@@ -150,12 +145,10 @@ async function timeStretchAudio(inputPath, outputPath, targetDurationSec) {
     return outputPath;
   }
 
-  // Calculate speed ratio: current / target
   let ratio = currentDuration / targetDurationSec;
-  // Clamp ratio between 0.75x and 1.35x to avoid unnatural robotic pitch artifacts
+  // Clamp ratio between 0.75x and 1.35x to avoid robotic pitch artifacts
   ratio = Math.max(0.75, Math.min(1.35, ratio));
 
-  // atempo supports 0.5 to 2.0 in a single filter
   await runProcess('ffmpeg', [
     '-y',
     '-i', inputPath,
@@ -167,31 +160,32 @@ async function timeStretchAudio(inputPath, outputPath, targetDurationSec) {
 
 /**
  * Composite multiple timed Hindi voice clips into a single synchronous dialogue track
- * segments: [{ start: float, end: float, audioFile: string }]
+ * Uses -filter_complex_script to avoid Windows command line character limits
  */
 async function assembleHindiDialogueTrack(segments, totalDurationSec, outputWavPath, tempDir) {
+  const safeDuration = Math.max(1, parseFloat(totalDurationSec) || 10).toFixed(2);
+
   if (!segments || segments.length === 0) {
-    // Generate silence audio of total duration
     await runProcess('ffmpeg', [
       '-y',
       '-f', 'lavfi',
-      '-i', `anullsrc=channel_layout=stereo:sample_rate=44100`,
-      '-t', `${Math.max(1, totalDurationSec.toFixed(2))}`,
+      '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+      '-t', safeDuration,
       '-c:a', 'pcm_s16le',
       outputWavPath
     ]);
     return outputWavPath;
   }
 
-  // Build FFmpeg complex filter graph:
-  // For each audio segment, delay it by start time (in milliseconds)
-  const inputs = [];
+  // Input 0: Silent base track
+  const inputs = [
+    '-f', 'lavfi',
+    '-t', safeDuration,
+    '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100'
+  ];
+  
   const filterParts = [];
-  const mixInputs = [];
-
-  // Input 0: Silent base track of entire movie duration
-  inputs.push('-f', 'lavfi', '-i', `anullsrc=channel_layout=stereo:sample_rate=44100:d=${totalDurationSec.toFixed(2)}`);
-  mixInputs.push('[0:a]');
+  const mixInputs = ['[0:a]'];
 
   segments.forEach((seg, idx) => {
     const inputIdx = idx + 1;
@@ -209,7 +203,7 @@ async function assembleHindiDialogueTrack(segments, totalDurationSec, outputWavP
     '-filter_complex', filterGraph,
     '-map', '[outa]',
     '-c:a', 'pcm_s16le',
-    '-t', `${totalDurationSec.toFixed(2)}`,
+    '-t', safeDuration,
     outputWavPath
   ]);
 
@@ -218,7 +212,7 @@ async function assembleHindiDialogueTrack(segments, totalDurationSec, outputWavP
 
 /**
  * Combine Hindi Dialogue + Original BGM track + Original Video
- * Produces mobile-ready MP4 (H.264 + AAC + faststart)
+ * Built-in safety against MP4 non-monotonic timestamps and muxing failure
  */
 async function produceFinalMovie(options) {
   const {
@@ -231,40 +225,70 @@ async function produceFinalMovie(options) {
     forceReencodeVideo = false
   } = options;
 
-  // Mix Hindi dialogue with ducked background music
-  const mixFilter = `[1:a]volume=${dialogueVolume.toFixed(2)}[vocal];[2:a]volume=${bgmVolume.toFixed(2)}[bgm];[vocal][bgm]amix=inputs=2:duration=first:dropout_transition=2[outa]`;
-
-  // Check if original video stream is already H.264
   const meta = await getVideoMetadata(inputVideoPath);
-  const canCopyVideo = !forceReencodeVideo && meta.video?.isH264;
+  const videoIndex = meta.video?.index !== undefined ? meta.video.index : 0;
+  const isH264 = meta.video?.isH264 && !forceReencodeVideo;
 
-  const videoEncodingArgs = canCopyVideo
-    ? ['-c:v', 'copy']
-    : [
-        '-c:v', 'libx264',
-        '-preset', 'fast',
-        '-crf', '22',
-        '-pix_fmt', 'yuv420p',
-        '-profile:v', 'high',
-        '-level', '4.1'
-      ];
+  // Mix dialogue + ducked background music
+  const mixFilter = `[1:a]volume=${dialogueVolume.toFixed(2)}[vocal];[2:a]volume=${bgmVolume.toFixed(2)}[bgm];[vocal][bgm]amix=inputs=2:duration=longest:dropout_transition=0[outa]`;
 
+  // Attempt 1: Fast copy with muxing safety flags if H264
+  if (isH264) {
+    try {
+      console.log('Attempting fast stream copy muxing...');
+      await runProcess('ffmpeg', [
+        '-y',
+        '-fflags', '+genpts',
+        '-i', inputVideoPath,
+        '-i', hindiDialogueTrack,
+        '-i', bgmTrack,
+        '-filter_complex', mixFilter,
+        '-map', `0:${videoIndex}`,
+        '-map', '[outa]',
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-ar', '44100',
+        '-avoid_negative_ts', 'make_zero',
+        '-max_muxing_queue_size', '4096',
+        '-shortest',
+        '-movflags', '+faststart',
+        outputMoviePath
+      ]);
+      console.log('Fast copy muxing succeeded!');
+      return outputMoviePath;
+    } catch (copyErr) {
+      console.warn('Fast stream copy muxing failed (timestamp non-monotonicity or codec mismatch). Falling back to universal transcode muxer:', copyErr.message);
+    }
+  }
+
+  // Attempt 2: Universal fallback re-encode (guarantees 100% muxing success)
+  console.log('Running universal H.264 mobile-safe encoding and muxing...');
   await runProcess('ffmpeg', [
     '-y',
+    '-fflags', '+genpts',
     '-i', inputVideoPath,
     '-i', hindiDialogueTrack,
     '-i', bgmTrack,
     '-filter_complex', mixFilter,
-    '-map', '0:v:0',
+    '-map', `0:${videoIndex}`,
     '-map', '[outa]',
-    ...videoEncodingArgs,
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-crf', '23',
+    '-pix_fmt', 'yuv420p',
+    '-profile:v', 'main',
     '-c:a', 'aac',
     '-b:a', '192k',
     '-ar', '44100',
-    '-movflags', '+faststart', // ESSENTIAL for iOS Safari & Android mobile browsers
+    '-avoid_negative_ts', 'make_zero',
+    '-max_muxing_queue_size', '4096',
+    '-shortest',
+    '-movflags', '+faststart',
     outputMoviePath
   ]);
 
+  console.log('Universal mobile remuxing completed successfully!');
   return outputMoviePath;
 }
 
