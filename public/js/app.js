@@ -36,9 +36,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const subOverlay = document.getElementById('subOverlay');
   const hindiAudioPlayer = document.getElementById('hindiAudioPlayer');
 
-  // Track switcher
+  // Track switcher & Master Audio elements
   const trackHindiBtn = document.getElementById('trackHindiBtn');
   const trackEnglishBtn = document.getElementById('trackEnglishBtn');
+  const unmuteAllBtn = document.getElementById('unmuteAllBtn');
+  const unmuteIcon = document.getElementById('unmuteIcon');
+  const unmuteText = document.getElementById('unmuteText');
+  const testSoundBtn = document.getElementById('testSoundBtn');
+  const masterVolumeSlider = document.getElementById('masterVolumeSlider');
 
   // Server Status Bar Elements
   const serverStatusBar = document.getElementById('serverStatusBar');
@@ -74,6 +79,9 @@ document.addEventListener('DOMContentLoaded', () => {
   let activeAudioTrack = 'hindi'; // 'hindi' | 'english'
   let currentSegments = [];
   let activeSegmentIndex = -1;
+  let activePlayingAudio = null;
+  let masterVolume = 1.0;
+  let audioUnlocked = false;
 
   function getBackendUrl() {
     const saved = localStorage.getItem('cinedub_backend_url');
@@ -288,9 +296,124 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => { copyUrlBtn.textContent = 'Copy Mobile URL'; }, 2000);
   });
 
+  // Base64 to Blob converter for in-memory audio buffering
+  function base64ToBlob(base64Data, contentType = 'audio/mpeg') {
+    try {
+      const parts = base64Data.split(',');
+      const raw = window.atob(parts.length > 1 ? parts[1] : parts[0]);
+      const rawLength = raw.length;
+      const uInt8Array = new Uint8Array(rawLength);
+      for (let i = 0; i < rawLength; ++i) {
+        uInt8Array[i] = raw.charCodeAt(i);
+      }
+      return new Blob([uInt8Array], { type: contentType });
+    } catch (err) {
+      console.warn('Base64 to blob error:', err);
+      return null;
+    }
+  }
+
+  // Preload and cache all Hindi audio clips into native Audio objects
+  function prepareAudioSegments(segments) {
+    if (!segments || !Array.isArray(segments)) return;
+    segments.forEach((seg, idx) => {
+      try {
+        if (seg.audioUrl && seg.audioUrl.startsWith('data:')) {
+          const blob = base64ToBlob(seg.audioUrl);
+          if (blob) {
+            seg.blobUrl = URL.createObjectURL(blob);
+            const audio = new Audio(seg.blobUrl);
+            audio.preload = 'auto';
+            audio.volume = masterVolume;
+            audio.load();
+            seg.audioElement = audio;
+          }
+        } else if (seg.audioStreamUrl) {
+          const audio = new Audio(seg.audioStreamUrl);
+          audio.preload = 'auto';
+          audio.volume = masterVolume;
+          audio.load();
+          seg.audioElement = audio;
+        }
+      } catch (err) {
+        console.warn(`Could not preload audio segment ${idx}:`, err);
+      }
+    });
+  }
+
+  // Universal Audio Unlocker for Mobile Safari & Android Chrome
+  function unlockAudioEngine() {
+    if (audioUnlocked) return;
+    audioUnlocked = true;
+
+    // Unmute video player
+    dubbedVideoPlayer.muted = false;
+    dubbedVideoPlayer.volume = masterVolume;
+
+    // Unmute background audio element
+    hindiAudioPlayer.muted = false;
+    hindiAudioPlayer.volume = masterVolume;
+
+    // Trigger silent 1ms audio to authorize audio playback context in browser
+    hindiAudioPlayer.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
+    hindiAudioPlayer.play().then(() => {
+      hindiAudioPlayer.pause();
+    }).catch(() => {});
+
+    // Prime Web Speech API
+    if ('speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.resume();
+        const silentUtterance = new SpeechSynthesisUtterance('');
+        window.speechSynthesis.speak(silentUtterance);
+      } catch (_) {}
+    }
+
+    if (unmuteText && unmuteIcon) {
+      unmuteIcon.textContent = '🔊';
+      unmuteText.textContent = `Audio: Active (${Math.round(masterVolume * 100)}%)`;
+    }
+  }
+
+  // Register unlock triggers on all user gestures
+  ['click', 'touchstart', 'pointerdown'].forEach(ev => {
+    document.addEventListener(ev, () => unlockAudioEngine(), { once: true, passive: true });
+  });
+
+  function playSpeechFallback(text) {
+    if (!('speechSynthesis' in window) || !text) return;
+    try {
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'hi-IN';
+      utterance.volume = masterVolume;
+      utterance.rate = 1.0;
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn('SpeechSynthesis error:', e);
+    }
+  }
+
+  function stopCurrentSegmentAudio() {
+    if (activePlayingAudio) {
+      try {
+        activePlayingAudio.pause();
+        activePlayingAudio.currentTime = 0;
+      } catch (_) {}
+      activePlayingAudio = null;
+    }
+    hindiAudioPlayer.pause();
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    activeSegmentIndex = -1;
+  }
+
   // Track switcher handlers
   if (trackHindiBtn && trackEnglishBtn) {
     trackHindiBtn.addEventListener('click', () => {
+      unlockAudioEngine();
       activeAudioTrack = 'hindi';
       trackHindiBtn.classList.add('active');
       trackEnglishBtn.classList.remove('active');
@@ -298,13 +421,77 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     trackEnglishBtn.addEventListener('click', () => {
+      unlockAudioEngine();
       activeAudioTrack = 'english';
       trackEnglishBtn.classList.add('active');
       trackHindiBtn.classList.remove('active');
-      hindiAudioPlayer.pause();
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      stopCurrentSegmentAudio();
       subOverlay.classList.add('hidden');
+      dubbedVideoPlayer.muted = false;
+      dubbedVideoPlayer.volume = masterVolume;
+    });
+  }
+
+  // Unmute & Audio Controls Handlers
+  if (unmuteAllBtn) {
+    unmuteAllBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      unlockAudioEngine();
+      dubbedVideoPlayer.muted = false;
+      hindiAudioPlayer.muted = false;
+      masterVolume = 1.0;
       dubbedVideoPlayer.volume = 1.0;
+      hindiAudioPlayer.volume = 1.0;
+      if (masterVolumeSlider) masterVolumeSlider.value = 1.0;
+      if (unmuteIcon) unmuteIcon.textContent = '🔊';
+      if (unmuteText) unmuteText.textContent = 'Audio: Active (100%)';
+      playSpeechFallback('सिनेडब ऑडियो सक्रिय है');
+    });
+  }
+
+  if (testSoundBtn) {
+    testSoundBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      unlockAudioEngine();
+      dubbedVideoPlayer.muted = false;
+      masterVolume = 1.0;
+      dubbedVideoPlayer.volume = 1.0;
+      if (masterVolumeSlider) masterVolumeSlider.value = 1.0;
+
+      if (currentSegments && currentSegments.length > 0 && currentSegments[0].audioElement) {
+        stopCurrentSegmentAudio();
+        const aud = currentSegments[0].audioElement;
+        aud.currentTime = 0;
+        aud.volume = 1.0;
+        activePlayingAudio = aud;
+        aud.play().catch(() => {
+          playSpeechFallback(currentSegments[0].hindi || 'नमस्ते, सिनेडब ऑडियो सक्रिय है।');
+        });
+      } else {
+        playSpeechFallback('नमस्ते, सिनेडब ऑडियो सक्रिय है।');
+      }
+    });
+  }
+
+  if (masterVolumeSlider) {
+    masterVolumeSlider.addEventListener('input', (e) => {
+      masterVolume = parseFloat(e.target.value);
+      dubbedVideoPlayer.volume = masterVolume;
+      hindiAudioPlayer.volume = masterVolume;
+      if (activePlayingAudio) {
+        activePlayingAudio.volume = masterVolume;
+      }
+      if (unmuteIcon && unmuteText) {
+        if (masterVolume === 0) {
+          unmuteIcon.textContent = '🔇';
+          unmuteText.textContent = 'Audio: Muted (0%)';
+          dubbedVideoPlayer.muted = true;
+        } else {
+          unmuteIcon.textContent = '🔊';
+          unmuteText.textContent = `Audio: Active (${Math.round(masterVolume * 100)}%)`;
+          dubbedVideoPlayer.muted = false;
+        }
+      }
     });
   }
 
@@ -316,55 +503,80 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentSeg = currentSegments.find(s => currentTime >= s.start && currentTime <= s.end);
 
     if (currentSeg) {
-      // Subtitle
+      // Subtitle display
       if (activeAudioTrack === 'hindi') {
         subOverlay.textContent = currentSeg.hindi;
         subOverlay.classList.remove('hidden');
       }
 
-      // Play audio if track is Hindi and new segment
+      // Play audio if track is Hindi and a new segment is reached
       if (activeAudioTrack === 'hindi' && activeSegmentIndex !== currentSeg.id) {
+        stopCurrentSegmentAudio();
         activeSegmentIndex = currentSeg.id;
-        if (currentSeg.audioUrl) {
-          hindiAudioPlayer.src = currentSeg.audioUrl;
-          hindiAudioPlayer.play().catch(() => {});
-        } else if ('speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(currentSeg.hindi);
-          utterance.lang = 'hi-IN';
-          utterance.rate = 1.05;
-          window.speechSynthesis.speak(utterance);
-        }
-        // Duck original video background
-        const duckVol = parseFloat(bgmSlider.value) || 0.35;
+
+        // Duck original video background sound
+        const duckVol = (parseFloat(bgmSlider.value) || 0.35) * masterVolume;
         dubbedVideoPlayer.volume = duckVol;
+
+        // 1. Try preloaded in-memory Audio object
+        if (currentSeg.audioElement) {
+          activePlayingAudio = currentSeg.audioElement;
+          currentSeg.audioElement.currentTime = 0;
+          currentSeg.audioElement.volume = masterVolume;
+          currentSeg.audioElement.play().catch((err) => {
+            console.warn('Preloaded Audio play error, trying speech:', err);
+            playSpeechFallback(currentSeg.hindi);
+          });
+        }
+        // 2. Try direct audioUrl in background player
+        else if (currentSeg.audioUrl) {
+          hindiAudioPlayer.src = currentSeg.audioUrl;
+          hindiAudioPlayer.currentTime = 0;
+          hindiAudioPlayer.volume = masterVolume;
+          hindiAudioPlayer.play().catch((err) => {
+            console.warn('Audio tag play error, trying speech:', err);
+            playSpeechFallback(currentSeg.hindi);
+          });
+        }
+        // 3. Native system speech synthesis
+        else {
+          playSpeechFallback(currentSeg.hindi);
+        }
       }
     } else {
       if (activeSegmentIndex !== -1) {
-        activeSegmentIndex = -1;
+        stopCurrentSegmentAudio();
         subOverlay.classList.add('hidden');
         if (activeAudioTrack === 'hindi') {
-          dubbedVideoPlayer.volume = 1.0;
+          dubbedVideoPlayer.volume = masterVolume;
         }
       }
     }
   });
 
   dubbedVideoPlayer.addEventListener('pause', () => {
+    if (activePlayingAudio) {
+      activePlayingAudio.pause();
+    }
     hindiAudioPlayer.pause();
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   });
 
   dubbedVideoPlayer.addEventListener('play', () => {
-    if (activeAudioTrack === 'hindi' && activeSegmentIndex !== -1) {
-      hindiAudioPlayer.play().catch(() => {});
+    unlockAudioEngine();
+    dubbedVideoPlayer.muted = false;
+    if (activeAudioTrack === 'hindi' && activePlayingAudio) {
+      activePlayingAudio.play().catch(() => {});
     }
   });
 
   dubbedVideoPlayer.addEventListener('seeking', () => {
-    activeSegmentIndex = -1;
-    hindiAudioPlayer.pause();
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    stopCurrentSegmentAudio();
+  });
+
+  dubbedVideoPlayer.addEventListener('click', () => {
+    unlockAudioEngine();
+    dubbedVideoPlayer.muted = false;
   });
 
   // Start Dubbing Pipeline
@@ -435,6 +647,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const data = await response.json();
     currentSegments = data.segments || [];
+    prepareAudioSegments(currentSegments);
 
     // Stage 4: Voice Synthesis
     updateProgressUI({
@@ -614,13 +827,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const videoSrc = result.videoUrl || (result.filename ? `/api/video/${result.filename}` : '');
     dubbedVideoPlayer.src = videoSrc;
+    dubbedVideoPlayer.muted = false;
+    dubbedVideoPlayer.volume = masterVolume;
     dubbedVideoPlayer.load();
+
+    if (result.segments) {
+      prepareAudioSegments(result.segments);
+    }
 
     downloadBtn.href = videoSrc;
     downloadBtn.setAttribute('download', result.filename || 'dubbed_hindi_movie.mp4');
 
-    if (result.segments && result.segments.length > 0 && result.segments[0].audioUrl) {
-      downloadAudioBtn.href = result.segments[0].audioUrl;
+    if (result.segments && result.segments.length > 0 && (result.segments[0].audioUrl || result.segments[0].audioStreamUrl)) {
+      downloadAudioBtn.href = result.segments[0].audioUrl || result.segments[0].audioStreamUrl;
       downloadAudioBtn.style.display = 'inline-block';
     } else {
       downloadAudioBtn.style.display = 'none';
@@ -630,6 +849,8 @@ document.addEventListener('DOMContentLoaded', () => {
     activeAudioTrack = 'hindi';
     if (trackHindiBtn) trackHindiBtn.classList.add('active');
     if (trackEnglishBtn) trackEnglishBtn.classList.remove('active');
+
+    unlockAudioEngine();
   }
 
   dubAnotherBtn.addEventListener('click', () => {
@@ -637,9 +858,7 @@ document.addEventListener('DOMContentLoaded', () => {
     uploadSection.classList.remove('hidden');
     dubbedVideoPlayer.pause();
     dubbedVideoPlayer.src = '';
-    hindiAudioPlayer.pause();
-    hindiAudioPlayer.src = '';
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    stopCurrentSegmentAudio();
     selectedFile = null;
     selectedFileName.textContent = 'No file selected';
     if (localFilePathInput) localFilePathInput.value = '';

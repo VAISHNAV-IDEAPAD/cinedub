@@ -188,6 +188,21 @@
           <button class="track-btn" id="trackEnglishBtn">🇺🇸 Original English Audio</button>
         </div>
 
+        <!-- Master Audio Status & Control Bar -->
+        <div class="player-audio-controls">
+          <button type="button" id="unmuteAllBtn" class="audio-ctrl-btn" title="Click to ensure audio is unmuted">
+            <span id="unmuteIcon">🔊</span>
+            <span id="unmuteText">Audio: Active (100%)</span>
+          </button>
+          <button type="button" id="testSoundBtn" class="audio-ctrl-btn secondary" title="Test Hindi speech voice">
+            <span>🎙️ Test Hindi Voice</span>
+          </button>
+          <div class="volume-slider-group">
+            <label for="masterVolumeSlider">Vol:</label>
+            <input type="range" id="masterVolumeSlider" min="0" max="1" step="0.05" value="1">
+          </div>
+        </div>
+
         <!-- Responsive HTML5 Video Player with Live Subtitle Overlay -->
         <div class="player-wrapper">
           <video id="dubbedVideoPlayer" controls playsinline webkit-playsinline preload="metadata">

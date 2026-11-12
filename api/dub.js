@@ -131,7 +131,8 @@ module.exports = async (req, res) => {
         ...seg,
         original: seg.text,
         hindi,
-        audioUrl
+        audioUrl,
+        audioStreamUrl: `/api/tts?text=${encodeURIComponent(hindi)}`
       });
     }
 
