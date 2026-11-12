@@ -65,7 +65,7 @@
         <!-- Tab 1: Direct File Upload -->
         <div class="tab-pane active" id="tabUploadPane">
           <div class="dropzone" id="dropZone">
-            <input type="file" id="videoFileInput" accept="video/mp4,video/mkv,video/quicktime,video/webm,video/*">
+            <input type="file" id="videoFileInput" accept="*/*, video/*, .mp4, .mkv, .mov, .avi, .webm, .ts, .m4v">
             <div class="dropzone-content">
               <div class="upload-icon">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -75,6 +75,26 @@
               <span class="file-name-badge" id="selectedFileName">No file selected</span>
             </div>
           </div>
+
+          <!-- Quick Mobile / Android File Choosers -->
+          <div class="mobile-picker-options">
+            <button type="button" id="btnAndroidFileManager" class="picker-btn file-manager-btn">
+              <span class="picker-icon">📁</span>
+              <div class="picker-text">
+                <strong>Android File Manager</strong>
+                <span>Browse Downloads, Internal Storage, SD Card</span>
+              </div>
+            </button>
+            <button type="button" id="btnGalleryPicker" class="picker-btn gallery-btn">
+              <span class="picker-icon">🎬</span>
+              <div class="picker-text">
+                <strong>Gallery / Media Picker</strong>
+                <span>Browse Recorded Videos & Camera</span>
+              </div>
+            </button>
+          </div>
+          <input type="file" id="fileManagerInput" accept="*/*" style="display:none">
+          <input type="file" id="galleryInput" accept="video/*" style="display:none">
         </div>
 
         <!-- Tab 2: Local File Path -->

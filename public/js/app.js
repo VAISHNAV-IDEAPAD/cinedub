@@ -7,6 +7,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const dropZone = document.getElementById('dropZone');
   const videoFileInput = document.getElementById('videoFileInput');
+  const btnAndroidFileManager = document.getElementById('btnAndroidFileManager');
+  const btnGalleryPicker = document.getElementById('btnGalleryPicker');
+  const fileManagerInput = document.getElementById('fileManagerInput');
+  const galleryInput = document.getElementById('galleryInput');
   const selectedFileName = document.getElementById('selectedFileName');
   const localFilePathInput = document.getElementById('localFilePathInput');
   const subtitleFileInput = document.getElementById('subtitleFileInput');
@@ -164,11 +168,72 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Android File Manager Picker Button
+  if (btnAndroidFileManager && fileManagerInput) {
+    btnAndroidFileManager.addEventListener('click', async (e) => {
+      e.preventDefault();
+      // Try File System Access API if available on modern Chromium
+      if (window.showOpenFilePicker) {
+        try {
+          const [fileHandle] = await window.showOpenFilePicker({
+            types: [
+              {
+                description: 'Movie Files',
+                accept: {
+                  'video/*': ['.mp4', '.mkv', '.mov', '.avi', '.webm', '.ts', '.m4v']
+                }
+              }
+            ],
+            multiple: false
+          });
+          const file = await fileHandle.getFile();
+          handleFileSelection(file);
+          return;
+        } catch (err) {
+          if (err.name === 'AbortError') return;
+        }
+      }
+      fileManagerInput.click();
+    });
+
+    fileManagerInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handleFileSelection(e.target.files[0]);
+      }
+    });
+  }
+
+  // Gallery / Photos Picker Button
+  if (btnGalleryPicker && galleryInput) {
+    btnGalleryPicker.addEventListener('click', (e) => {
+      e.preventDefault();
+      galleryInput.click();
+    });
+
+    galleryInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handleFileSelection(e.target.files[0]);
+      }
+    });
+  }
+
   if (localFilePathInput) {
     localFilePathInput.addEventListener('input', validateForm);
   }
 
   function handleFileSelection(file) {
+    if (!file) return;
+
+    // Validate that the chosen file is a video or recognizable media format
+    const validVideoExts = ['.mp4', '.mkv', '.mov', '.avi', '.webm', '.ts', '.m4v', '.3gp', '.flv', '.wmv'];
+    const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+    const isVideo = file.type.startsWith('video/') || validVideoExts.includes(ext) || file.type === 'application/octet-stream';
+
+    if (!isVideo && file.size > 0) {
+      const proceed = confirm(`"${file.name}" might not be a standard video format. Do you want to proceed with this file anyway?`);
+      if (!proceed) return;
+    }
+
     selectedFile = file;
     if (selectedFileBlobUrl) URL.revokeObjectURL(selectedFileBlobUrl);
     selectedFileBlobUrl = URL.createObjectURL(file);
