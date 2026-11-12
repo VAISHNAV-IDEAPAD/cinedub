@@ -29,6 +29,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const downloadBtn = document.getElementById('downloadBtn');
   const dubAnotherBtn = document.getElementById('dubAnotherBtn');
 
+  // Vercel Guidance Banner
+  const vercelAlertBox = document.getElementById('vercelAlertBox');
+  if (vercelAlertBox && (window.location.hostname.includes('vercel.app') || window.location.protocol === 'https:')) {
+    vercelAlertBox.classList.remove('hidden');
+  }
+
   // Server Status Bar Elements
   const serverStatusBar = document.getElementById('serverStatusBar');
   const serverStatusText = document.getElementById('serverStatusText');
