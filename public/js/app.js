@@ -315,6 +315,22 @@ document.addEventListener('DOMContentLoaded', () => {
     return audioCtx;
   }
 
+  function base64ToBlob(base64, mimeType = 'audio/mpeg') {
+    try {
+      const clean = base64.includes(',') ? base64.split(',')[1] : base64;
+      const binary = window.atob(clean.replace(/[^A-Za-z0-9+/=]/g, ''));
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return new Blob([bytes], { type: mimeType });
+    } catch (e) {
+      console.warn('base64ToBlob error:', e);
+      return null;
+    }
+  }
+
   function base64ToArrayBuffer(base64) {
     const clean = base64.includes(',') ? base64.split(',')[1] : base64;
     const binary = window.atob(clean.replace(/[^A-Za-z0-9+/=]/g, ''));
@@ -332,23 +348,35 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Pre-decode all Hindi dialogue audio clips into native AudioBuffers
+  // Pre-decode all Hindi dialogue audio clips into Blob URLs and AudioBuffers
   async function decodeAllSegments(segments) {
     if (!segments || !Array.isArray(segments)) return;
     const ctx = getAudioContext();
     for (const seg of segments) {
+      // 1. Create immediate HTML5 Audio-compatible Blob URL for zero-latency playback
       if (seg.audioUrl && seg.audioUrl.startsWith('data:')) {
+        const blob = base64ToBlob(seg.audioUrl, 'audio/mpeg');
+        if (blob) {
+          seg.blob = blob;
+          seg.blobUrl = URL.createObjectURL(blob);
+        }
+      }
+
+      // 2. Decode AudioBuffer for Web Audio API mixing and offline full soundtrack compilation
+      if (seg.blob) {
         try {
-          const ab = base64ToArrayBuffer(seg.audioUrl);
-          seg.audioBuffer = await decodeAudioDataPromise(ctx, ab);
+          const ab = await seg.blob.arrayBuffer();
+          seg.audioBuffer = await decodeAudioDataPromise(ctx, ab.slice(0));
         } catch (e) {
-          console.warn(`Could not decode audio for segment ${seg.id}:`, e);
+          console.warn(`Could not decode audioBuffer for segment ${seg.id}:`, e);
         }
       } else if (seg.audioStreamUrl) {
         try {
           const res = await fetch(seg.audioStreamUrl);
           const ab = await res.arrayBuffer();
-          seg.audioBuffer = await decodeAudioDataPromise(ctx, ab);
+          seg.blob = new Blob([ab], { type: 'audio/mpeg' });
+          seg.blobUrl = URL.createObjectURL(seg.blob);
+          seg.audioBuffer = await decodeAudioDataPromise(ctx, ab.slice(0));
         } catch (e) {
           console.warn(`Could not fetch/decode audio for segment ${seg.id}:`, e);
         }
@@ -440,13 +468,34 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Play segment via Web Audio API
+  // Play Hindi dialogue segment with multi-layer browser resilience
   function playSegmentAudio(seg) {
     stopCurrentAudio();
-    const ctx = getAudioContext();
 
+    // Strategy 1: Pre-buffered Blob Object URL on HTML5 Audio (Fastest, zero-latency, cross-platform)
+    if (seg.blobUrl) {
+      hindiAudioPlayer.src = seg.blobUrl;
+      hindiAudioPlayer.currentTime = 0;
+      hindiAudioPlayer.volume = masterVolume;
+      const playPromise = hindiAudioPlayer.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(err => {
+          console.warn('HTML5 audio play error, trying WebAudio/Speech fallback:', err);
+          playViaWebAudioOrSpeech(seg);
+        });
+      }
+      return;
+    }
+
+    playViaWebAudioOrSpeech(seg);
+  }
+
+  function playViaWebAudioOrSpeech(seg) {
+    // Strategy 2: Web Audio API Buffer Source Node
     if (seg.audioBuffer) {
       try {
+        const ctx = getAudioContext();
+        if (ctx.state === 'suspended') ctx.resume();
         const source = ctx.createBufferSource();
         source.buffer = seg.audioBuffer;
         const gainNode = ctx.createGain();
@@ -461,16 +510,16 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // Secondary fallback: HTML5 audio element
-    if (seg.audioUrl) {
-      hindiAudioPlayer.src = seg.audioUrl;
+    // Strategy 3: Direct Stream URL
+    if (seg.audioStreamUrl) {
+      hindiAudioPlayer.src = seg.audioStreamUrl;
       hindiAudioPlayer.currentTime = 0;
       hindiAudioPlayer.volume = masterVolume;
       hindiAudioPlayer.play().catch(() => playSpeechFallback(seg.hindi));
       return;
     }
 
-    // Tertiary fallback: Web Speech API
+    // Strategy 4: Web Speech API synthesis
     playSpeechFallback(seg.hindi);
   }
 
@@ -478,14 +527,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (activeSourceNode) {
       try {
         activeSourceNode.stop();
+        activeSourceNode.disconnect();
       } catch (_) {}
       activeSourceNode = null;
     }
-    hindiAudioPlayer.pause();
+    if (hindiAudioPlayer) {
+      hindiAudioPlayer.pause();
+    }
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
-    activeSegmentIndex = -1;
+    // Note: activeSegmentIndex is managed by caller / timeupdate transition
   }
 
   // Universal Audio Unlocker for Mobile Safari & Android Chrome
@@ -630,22 +682,54 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // In-Browser MediaRecorder Dubbed Video Exporter
+  // In-Browser MediaRecorder Dubbed Video Exporter with Hindi Audio Track
   let isRendering = false;
   if (renderDubbedVideoBtn) {
     renderDubbedVideoBtn.addEventListener('click', async (e) => {
       e.preventDefault();
       if (isRendering) return;
 
-      const stream = dubbedVideoPlayer.captureStream ? dubbedVideoPlayer.captureStream() : dubbedVideoPlayer.mozCaptureStream ? dubbedVideoPlayer.mozCaptureStream() : null;
-      if (!stream) {
-        alert('Direct video capture is not supported on this browser version. Downloading full Hindi Audio Track instead!');
+      const videoStream = dubbedVideoPlayer.captureStream ? dubbedVideoPlayer.captureStream() : (dubbedVideoPlayer.mozCaptureStream ? dubbedVideoPlayer.mozCaptureStream() : null);
+      if (!videoStream) {
+        alert('Direct video capture is not supported on this browser version. Downloading full Hindi Audio Track (.WAV) instead!');
         if (downloadAudioBtn) downloadAudioBtn.click();
         return;
       }
 
       isRendering = true;
-      renderBtnText.textContent = '⏳ Rendering Dubbed Movie... (Playing Scene)';
+      renderBtnText.textContent = '⏳ Exporting Dubbed Movie with Hindi Audio... (Please Wait)';
+
+      const ctx = getAudioContext();
+      if (ctx.state === 'suspended') await ctx.resume();
+      const dest = ctx.createMediaStreamDestination();
+
+      // Ensure full Hindi soundtrack is generated
+      if (!fullSoundtrackBlob && currentSegments && currentSegments.length > 0) {
+        fullSoundtrackBlob = await generateFullSoundtrack(videoTotalDuration, currentSegments);
+      }
+
+      let audioSource = null;
+      if (fullSoundtrackBlob) {
+        try {
+          const ab = await fullSoundtrackBlob.arrayBuffer();
+          const sndBuf = await decodeAudioDataPromise(ctx, ab);
+          audioSource = ctx.createBufferSource();
+          audioSource.buffer = sndBuf;
+          audioSource.connect(dest);
+          audioSource.connect(ctx.destination);
+        } catch (err) {
+          console.warn('Could not connect full soundtrack buffer to media recorder destination:', err);
+        }
+      }
+
+      const audioTracks = (audioSource && dest.stream.getAudioTracks().length > 0)
+        ? dest.stream.getAudioTracks()
+        : (videoStream.getAudioTracks().length > 0 ? videoStream.getAudioTracks() : []);
+
+      const combinedStream = new MediaStream([
+        ...videoStream.getVideoTracks(),
+        ...audioTracks
+      ]);
 
       let mimeType = 'video/webm;codecs=vp8,opus';
       if (!MediaRecorder.isTypeSupported(mimeType)) {
@@ -653,7 +737,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = '';
       }
 
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      const recorder = mimeType ? new MediaRecorder(combinedStream, { mimeType }) : new MediaRecorder(combinedStream);
       const recordedChunks = [];
 
       recorder.ondataavailable = (event) => {
@@ -663,11 +747,14 @@ document.addEventListener('DOMContentLoaded', () => {
       };
 
       recorder.onstop = () => {
-        const dubbedBlob = new Blob(recordedChunks, { type: mimeType || 'video/mp4' });
+        if (audioSource) {
+          try { audioSource.stop(); } catch (_) {}
+        }
+        const ext = (mimeType && mimeType.includes('mp4')) ? 'mp4' : 'webm';
+        const dubbedBlob = new Blob(recordedChunks, { type: mimeType || 'video/webm' });
         const dubbedUrl = URL.createObjectURL(dubbedBlob);
         const a = document.createElement('a');
         a.href = dubbedUrl;
-        const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
         a.download = `hindi_dubbed_${(selectedFile?.name || 'movie').replace(/\.[^/.]+$/, "")}.${ext}`;
         document.body.appendChild(a);
         a.click();
@@ -678,9 +765,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       recorder.start(250);
       dubbedVideoPlayer.currentTime = 0;
+      if (audioSource) {
+        audioSource.start(0);
+      }
       dubbedVideoPlayer.play();
 
       dubbedVideoPlayer.onended = () => {
+        if (audioSource) {
+          try { audioSource.stop(); } catch (_) {}
+        }
         if (recorder.state === 'recording') {
           recorder.stop();
         }
@@ -705,7 +798,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // MUTE English audio completely during dialogue so user only hears HINDI!
         dubbedVideoPlayer.volume = 0.0;
 
-        // Play Hindi speech if new segment
+        // Play Hindi speech if new segment entered
         if (activeSegmentIndex !== currentSeg.id) {
           activeSegmentIndex = currentSeg.id;
           playSegmentAudio(currentSeg);
@@ -713,6 +806,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } else {
       if (activeSegmentIndex !== -1) {
+        activeSegmentIndex = -1;
         stopCurrentAudio();
         subOverlay.classList.add('hidden');
         if (activeAudioTrack === 'hindi') {
@@ -724,6 +818,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   dubbedVideoPlayer.addEventListener('pause', () => {
+    activeSegmentIndex = -1;
     stopCurrentAudio();
   });
 
@@ -733,6 +828,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   dubbedVideoPlayer.addEventListener('seeking', () => {
+    activeSegmentIndex = -1;
+    stopCurrentAudio();
+  });
+
+  dubbedVideoPlayer.addEventListener('ended', () => {
+    activeSegmentIndex = -1;
     stopCurrentAudio();
   });
 
